@@ -10,13 +10,16 @@ rcd/
 ui/
 docs/
 .vscode/
-*.sqlite3
 *.log
-.env
-.env.*
 README.md
 LICENSE
 AGPL_COMPLIANCE.md
 UPSTREAM.md
 discoveries.md
+DEPLOYMENT.md
 fly.*.toml
+
+# NOTE: do NOT exclude db_v2.sqlite3 or .env — sqlx::query! macros
+# perform compile-time SQL verification against the schema in
+# db_v2.sqlite3 (DATABASE_URL points at it via .env). Excluding either
+# breaks the cargo build with cryptic sqlx macro errors.
