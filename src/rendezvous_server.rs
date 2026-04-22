@@ -1352,6 +1352,49 @@ async fn send_rk_res(
 }
 
 async fn create_udp_listener(port: i32, rmem: usize) -> ResultType<FramedSocket> {
+    // Cyberdriver fork: on Fly.io, UDP packets are only routed to the
+    // address resolved from the `fly-global-services` hostname (entry in
+    // /etc/hosts inside the Fly machine). Binding to 0.0.0.0 / [::]
+    // silently receives nothing. Detect Fly via FLY_APP_NAME (set by
+    // the platform on every machine boot) and try fly-global-services
+    // first. Outside Fly the env var is absent and we fall through to
+    // the upstream wildcard-bind path unchanged.
+    // Reference: https://fly.io/docs/networking/udp-and-tcp/
+    if std::env::var("FLY_APP_NAME").is_ok() {
+        match tokio::net::lookup_host(format!("fly-global-services:{}", port)).await {
+            Ok(mut iter) => {
+                if let Some(addr) = iter.next() {
+                    match FramedSocket::new_reuse(&addr, true, rmem).await {
+                        Ok(s) => {
+                            log::info!(
+                                "listen on udp {:?} (fly-global-services)",
+                                s.local_addr()
+                            );
+                            return Ok(s);
+                        }
+                        Err(e) => {
+                            log::warn!(
+                                "FLY_APP_NAME set but bind to fly-global-services {} failed: {} - falling back to wildcard",
+                                addr,
+                                e
+                            );
+                        }
+                    }
+                } else {
+                    log::warn!(
+                        "FLY_APP_NAME set but fly-global-services resolved to no addresses - falling back to wildcard"
+                    );
+                }
+            }
+            Err(e) => {
+                log::warn!(
+                    "FLY_APP_NAME set but fly-global-services lookup failed: {} - falling back to wildcard",
+                    e
+                );
+            }
+        }
+    }
+
     let addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), port as _);
     if let Ok(s) = FramedSocket::new_reuse(&addr, true, rmem).await {
         log::debug!("listen on udp {:?}", s.local_addr());

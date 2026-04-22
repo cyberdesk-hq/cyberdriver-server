@@ -1,0 +1,52 @@
+# Cyberdriver-server Dockerfile for Fly.io.
+#
+# Single image used for both hbbs and hbbr deployments. The Fly app's
+# CYBERDRIVER_ROLE env var ("hbbs" or "hbbr") tells the entrypoint
+# which binary to run.
+#
+# We build from source rather than copying prebuilt binaries so the
+# image always matches the source we're deploying. The build is fast
+# enough (~2 min cold, ~30s warm with cargo cache).
+
+# ---- Stage 1: build hbbs + hbbr ----
+FROM rust:1.93-bookworm AS builder
+
+WORKDIR /build
+
+# Cache deps before copying full source. Touch a stub main so cargo
+# fetches+compiles the dep graph; then we COPY the real source and
+# rebuild only our own crates.
+COPY Cargo.toml Cargo.lock build.rs ./
+COPY libs/hbb_common/Cargo.toml libs/hbb_common/Cargo.toml
+COPY libs/hbb_common/build.rs libs/hbb_common/build.rs 2>/dev/null || true
+RUN mkdir -p src libs/hbb_common/src libs/hbb_common/protos \
+ && echo "fn main(){}"  > src/main.rs \
+ && echo "pub fn x(){}" > src/lib.rs  \
+ && echo "fn main(){}"  > src/hbbr.rs \
+ && echo "fn main(){}"  > src/utils.rs \
+ && echo "pub fn x(){}" > libs/hbb_common/src/lib.rs \
+ && cargo build --release --bin hbbs --bin hbbr || true
+
+# Now bring in the real source and do the actual build.
+COPY . .
+RUN cargo build --release --bin hbbs --bin hbbr
+
+# ---- Stage 2: runtime ----
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/target/release/hbbs /usr/local/bin/hbbs
+COPY --from=builder /build/target/release/hbbr /usr/local/bin/hbbr
+COPY fly-entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+WORKDIR /root
+
+# Standard rustdesk-server ports. Fly only honors the ports declared in
+# fly.toml; this EXPOSE is documentation/dev-convenience.
+EXPOSE 21115/tcp 21116/tcp 21116/udp 21117/tcp 21118/tcp 21119/tcp
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

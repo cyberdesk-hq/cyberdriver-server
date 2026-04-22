@@ -1,0 +1,36 @@
+# Fly config — prod hbbr (Cyberdriver relay server, production)
+# Deployed to: cyberdriver-server-hbbr-iad-prod
+# Public DNS: hbbr.cyberdesk.io (A record managed in Cloudflare)
+#
+# Stateless TCP relay; no volume needed.
+
+app             = "cyberdriver-server-hbbr-iad-prod"
+primary_region  = "iad"
+
+[build]
+  dockerfile = "Dockerfile.fly"
+
+[env]
+  CYBERDRIVER_ROLE = "hbbr"
+  RUST_LOG         = "info"
+
+[[vm]]
+  size        = "shared-cpu-1x"
+  memory      = "512mb"
+
+# Relay TCP port (where peers stream their video/audio when NAT punch fails).
+[[services]]
+  internal_port = 21117
+  protocol      = "tcp"
+  [[services.ports]]
+    port = 21117
+
+# WebSocket relay (web-client fallback path).
+[[services]]
+  internal_port = 21119
+  protocol      = "tcp"
+  [[services.ports]]
+    port = 21119
+
+[deploy]
+  strategy = "immediate"
