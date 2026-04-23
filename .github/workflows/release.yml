@@ -92,21 +92,27 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
+          # No --strategy flag: respects [deploy] strategy in fly.toml.
+          # hbbs uses 'rolling' (volume forces brief detach/reattach
+          # window, ~10-15s; can't do bluegreen with single-attach
+          # volumes). New machine waits for TCP health check on 21115
+          # before old is fully drained.
           flyctl deploy \
             --config "fly.hbbs-${{ steps.env.outputs.env }}.toml" \
             --image "${{ env.IMAGE_REPO }}:${{ steps.tag.outputs.tag }}" \
-            --remote-only \
-            --strategy immediate
+            --remote-only
 
       - name: Deploy hbbr (${{ steps.env.outputs.env }})
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
+          # hbbr uses 'bluegreen': no volume, so Fly runs new + old in
+          # parallel, cuts traffic over once the new machine passes its
+          # TCP health check on 21117. Zero-downtime deploy.
           flyctl deploy \
             --config "fly.hbbr-${{ steps.env.outputs.env }}.toml" \
             --image "${{ env.IMAGE_REPO }}:${{ steps.tag.outputs.tag }}" \
-            --remote-only \
-            --strategy immediate
+            --remote-only
 
       - name: Summary
         run: |

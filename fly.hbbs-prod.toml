@@ -48,11 +48,17 @@ primary_region  = "iad"
     port = 21116
 
 # TCP rendezvous (signaling fallback when UDP is blocked).
+# This service carries the TCP health check so Fly knows when the new
+# machine is actually serving traffic before draining the old one.
 [[services]]
   internal_port = 21115
   protocol      = "tcp"
   [[services.ports]]
     port = 21115
+  [[services.tcp_checks]]
+    interval      = "10s"
+    timeout       = "2s"
+    grace_period  = "10s"
 
 [[services]]
   internal_port = 21116
@@ -69,4 +75,11 @@ primary_region  = "iad"
     port = 21118
 
 [deploy]
-  strategy = "immediate"
+  # Single machine + single-attach volume = can't bluegreen (two
+  # machines can't simultaneously hold the volume). Rolling waits for
+  # the new machine's health check before the deploy is "done", so
+  # we get the shortest possible reconnect window for clients (~10-15s
+  # vs ~30s with strategy=immediate). True zero-downtime would require
+  # a 2-machine HA setup; deferred to v1.5.
+  strategy           = "rolling"
+  wait_timeout       = "5m"

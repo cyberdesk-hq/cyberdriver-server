@@ -21,6 +21,10 @@ primary_region  = "iad"
   protocol      = "tcp"
   [[services.ports]]
     port = 21117
+  [[services.tcp_checks]]
+    interval      = "10s"
+    timeout       = "2s"
+    grace_period  = "10s"
 
 [[services]]
   internal_port = 21119
@@ -29,4 +33,6 @@ primary_region  = "iad"
     port = 21119
 
 [deploy]
-  strategy = "immediate"
+  # See fly.hbbr-prod.toml for why bluegreen.
+  strategy           = "bluegreen"
+  wait_timeout       = "5m"

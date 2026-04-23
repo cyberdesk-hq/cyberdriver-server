@@ -19,11 +19,16 @@ primary_region  = "iad"
   memory      = "512mb"
 
 # Relay TCP port (where peers stream their video/audio when NAT punch fails).
+# Carries the TCP health check (zero-downtime gate for bluegreen).
 [[services]]
   internal_port = 21117
   protocol      = "tcp"
   [[services.ports]]
     port = 21117
+  [[services.tcp_checks]]
+    interval      = "10s"
+    timeout       = "2s"
+    grace_period  = "10s"
 
 # WebSocket relay (web-client fallback path).
 [[services]]
@@ -33,4 +38,9 @@ primary_region  = "iad"
     port = 21119
 
 [deploy]
-  strategy = "immediate"
+  # No volume → bluegreen works perfectly. Fly runs new + old machines
+  # in parallel, only cuts traffic over once the new machine passes the
+  # TCP health check on 21117. Zero-downtime for clients in mid-relay
+  # session AND for new connection attempts.
+  strategy           = "bluegreen"
+  wait_timeout       = "5m"

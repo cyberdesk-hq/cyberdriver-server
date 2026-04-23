@@ -39,6 +39,10 @@ primary_region  = "iad"
   protocol      = "tcp"
   [[services.ports]]
     port = 21115
+  [[services.tcp_checks]]
+    interval      = "10s"
+    timeout       = "2s"
+    grace_period  = "10s"
 
 [[services]]
   internal_port = 21116
@@ -53,4 +57,6 @@ primary_region  = "iad"
     port = 21118
 
 [deploy]
-  strategy = "immediate"
+  # See fly.hbbs-prod.toml for why rolling instead of bluegreen.
+  strategy           = "rolling"
+  wait_timeout       = "5m"
