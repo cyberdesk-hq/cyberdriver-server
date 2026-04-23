@@ -16,6 +16,8 @@ primary_region  = "iad"
   CYBERDRIVER_ROLE = "hbbs"
   HBBR_ADDR        = "hbbr-dev.cyberdesk.io:21117"
   RUST_LOG         = "info"
+  # See fly.hbbs-prod.toml for why this is necessary on Fly.
+  TEST_HBBS        = "no"
 
 [mounts]
   source      = "hbbs_data_dev"

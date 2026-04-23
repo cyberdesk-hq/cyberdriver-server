@@ -15,6 +15,14 @@ primary_region  = "iad"
   CYBERDRIVER_ROLE = "hbbs"
   HBBR_ADDR        = "hbbr.cyberdesk.io:21117"
   RUST_LOG         = "info"
+  # Disable the upstream `test_hbbs` self-check. It sends UDP datagrams
+  # to localhost:21116 expecting hbbs's own UDP listener to respond,
+  # but on Fly we bind UDP only to fly-global-services (per Fly's UDP
+  # routing requirement), not localhost. Without this, the test times
+  # out after 12s and hbbs exits 1, crash-looping the machine.
+  # See src/rendezvous_server.rs::test_hbbs (line 1303) and the gate
+  # at line 169.
+  TEST_HBBS        = "no"
 
 # Persistent volume for hbbs's id_ed25519 keypair + db_v2.sqlite3.
 # If the volume is empty (catastrophic loss / fresh region), the
