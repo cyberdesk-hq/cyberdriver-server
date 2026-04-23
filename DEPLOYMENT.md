@@ -113,9 +113,9 @@ nc -zv hbbr-dev.cyberdesk.io 21117
 If dev looks healthy:
 
 ```bash
-git checkout -b main
+git checkout master
 git merge dev
-git push -u origin main
+git push origin master
 ```
 
 Same workflow re-runs, this time deploying to the prod apps. Same

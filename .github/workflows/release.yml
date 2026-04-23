@@ -1,9 +1,9 @@
 name: Build and deploy to Fly
 
 # Branch-based deploy:
-#   - push to main → builds image + deploys to PROD Fly apps
+#   - push to master → builds image + deploys to PROD Fly apps
 #       (cyberdriver-server-{hbbs,hbbr}-iad-prod)
-#   - push to dev  → builds image + deploys to DEV Fly apps
+#   - push to dev    → builds image + deploys to DEV Fly apps
 #       (cyberdriver-server-{hbbs,hbbr}-iad-dev)
 #
 # Same Docker image is deployed to both hbbs and hbbr in each env;
@@ -14,7 +14,7 @@ name: Build and deploy to Fly
 
 on:
   push:
-    branches: [main, dev]
+    branches: [master, dev]
   workflow_dispatch:
     inputs:
       env:
@@ -48,7 +48,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "env=${{ github.event.inputs.env }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          elif [ "${{ github.ref }}" = "refs/heads/master" ]; then
             echo "env=prod" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.ref }}" = "refs/heads/dev" ]; then
             echo "env=dev" >> "$GITHUB_OUTPUT"
