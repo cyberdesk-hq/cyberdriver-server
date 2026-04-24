@@ -156,3 +156,14 @@ or pivot conversation if not.
 - **Volume snapshot retention is 5 by default** (Fly's auto-snapshot).
   That's fine; the keypair restore from Fly secrets is the real
   durability story for the only critical data.
+- **hbbr must run as exactly ONE machine per app.** The upstream
+  rustdesk-server holds relay-pairing state in memory per-instance.
+  With 2+ machines, Fly's edge load-balancer can route the two halves
+  of a relay request (one from each peer) to different hbbr
+  instances, which then can't pair them. The visible symptom is
+  "first connect stalls forever, retry works instantly." The deploy
+  workflow includes a `flyctl scale count 1` step after each hbbr
+  deploy as a safeguard. Don't scale hbbr above 1 unless we
+  re-architect for shared state. (hbbs is also single-machine, but
+  enforced by the volume single-attach constraint, so it doesn't need
+  the same safeguard.)

@@ -38,9 +38,20 @@ primary_region  = "iad"
     port = 21119
 
 [deploy]
-  # No volume → bluegreen works perfectly. Fly runs new + old machines
-  # in parallel, only cuts traffic over once the new machine passes the
-  # TCP health check on 21117. Zero-downtime for clients in mid-relay
-  # session AND for new connection attempts.
-  strategy           = "bluegreen"
+  # IMPORTANT: hbbr must run as exactly ONE machine per app. The
+  # upstream rustdesk-server holds relay-pairing state per-instance in
+  # memory — there's no shared state across instances. With 2+
+  # machines, Fly's edge load-balancer can route the two halves of a
+  # relay request (one from each peer) to different hbbr machines,
+  # which then can't pair them. The visible symptom is "first connect
+  # stalls forever, retry connects instantly" (the retry happens to
+  # land both peers on the same instance by luck). Don't scale-count
+  # above 1.
+  #
+  # Strategy: rolling. With only 1 machine, bluegreen offers no
+  # zero-downtime advantage (you still get a brief swap window) AND
+  # introduces a split-brain risk during the brief overlap where new
+  # connections might land on different machines. Rolling is honest
+  # about the brief outage and avoids that risk.
+  strategy           = "rolling"
   wait_timeout       = "5m"

@@ -106,13 +106,28 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          # hbbr uses 'bluegreen': no volume, so Fly runs new + old in
-          # parallel, cuts traffic over once the new machine passes its
-          # TCP health check on 21117. Zero-downtime deploy.
+          # hbbr uses 'rolling' strategy. We deliberately keep hbbr at
+          # EXACTLY 1 machine (not bluegreen, not auto-scaled) because
+          # rustdesk-server's hbbr holds relay-pairing state in memory
+          # per-instance — multiple machines will split-brain a
+          # relay request between peers. See fly.hbbr-{prod,dev}.toml
+          # comments for the full reasoning.
           flyctl deploy \
             --config "fly.hbbr-${{ steps.env.outputs.env }}.toml" \
             --image "${{ env.IMAGE_REPO }}:${{ steps.tag.outputs.tag }}" \
             --remote-only
+
+      - name: Enforce single-instance hbbr (${{ steps.env.outputs.env }})
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          # Idempotent guard — if Fly's deploy ever creates a second
+          # machine (it has been observed to default to 2 for HA on
+          # first deploy), scale back to 1 immediately. No-op when
+          # already at 1.
+          flyctl scale count 1 \
+            --app "cyberdriver-server-hbbr-iad-${{ steps.env.outputs.env }}" \
+            --yes
 
       - name: Summary
         run: |

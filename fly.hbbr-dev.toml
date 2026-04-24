@@ -33,6 +33,8 @@ primary_region  = "iad"
     port = 21119
 
 [deploy]
-  # See fly.hbbr-prod.toml for why bluegreen.
-  strategy           = "bluegreen"
+  # See fly.hbbr-prod.toml for the full reasoning. TLDR: hbbr is
+  # single-instance (in-memory pairing state) so we use rolling, not
+  # bluegreen. Don't scale-count above 1.
+  strategy           = "rolling"
   wait_timeout       = "5m"
