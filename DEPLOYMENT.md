@@ -68,10 +68,10 @@ This lets the workflow `flyctl deploy` against the org's apps.
 
 ### 3. First deploy (dev)
 
-Trigger by pushing to the `dev` branch:
+Trigger by pushing to the `dev` branch. Run from your local clone of
+this repo (`cyberdesk-hq/cyberdriver-server`):
 
 ```bash
-cd /Users/alanduong/Documents/Code/Projects/cyberdriver-server
 git checkout -b dev
 git add -A
 git commit -m "M2: dev/prod fly setup, dockerfile, deploy workflow"
