@@ -1352,6 +1352,50 @@ async fn send_rk_res(
 }
 
 async fn create_udp_listener(port: i32, rmem: usize) -> ResultType<FramedSocket> {
+    // Cyberdriver fork: on Fly.io, UDP packets are only routed to the
+    // address resolved from the `fly-global-services` hostname (entry in
+    // /etc/hosts inside the Fly machine). Binding to 0.0.0.0 / [::]
+    // silently receives nothing. Detect Fly via FLY_APP_NAME (set by
+    // the platform on every machine boot) and bind to fly-global-services.
+    // Outside Fly the env var is absent and we fall through to the upstream
+    // wildcard-bind path unchanged.
+    // Reference: https://fly.io/docs/networking/udp-and-tcp/
+    //
+    // We bail!() instead of falling through to wildcard when on Fly: a
+    // wildcard bind would succeed (TCP listeners would still work), but
+    // UDP rendezvous / NAT punch would silently receive nothing — the
+    // server would look healthy while being functionally broken. A
+    // visible crash is far preferable, and the same logic applies to the
+    // LoopFailure::UdpSocket recovery path which re-calls this function
+    // at runtime.
+    if std::env::var("FLY_APP_NAME").is_ok() {
+        let host = format!("fly-global-services:{}", port);
+        let addr = match tokio::net::lookup_host(&host).await {
+            Ok(mut iter) => match iter.next() {
+                Some(addr) => addr,
+                None => bail!(
+                    "FLY_APP_NAME set but {} resolved to no addresses - refusing to fall back to wildcard UDP bind because Fly will silently drop those packets",
+                    host
+                ),
+            },
+            Err(e) => bail!(
+                "FLY_APP_NAME set but lookup of {} failed: {} - refusing to fall back to wildcard UDP bind because Fly will silently drop those packets",
+                host,
+                e
+            ),
+        };
+        let s = match FramedSocket::new_reuse(&addr, true, rmem).await {
+            Ok(s) => s,
+            Err(e) => bail!(
+                "FLY_APP_NAME set but bind to fly-global-services {} failed: {} - refusing to fall back to wildcard UDP bind because Fly will silently drop those packets",
+                addr,
+                e
+            ),
+        };
+        log::info!("listen on udp {:?} (fly-global-services)", s.local_addr());
+        return Ok(s);
+    }
+
     let addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), port as _);
     if let Ok(s) = FramedSocket::new_reuse(&addr, true, rmem).await {
         log::debug!("listen on udp {:?}", s.local_addr());

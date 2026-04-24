@@ -1,0 +1,40 @@
+# Fly config — dev hbbr (Cyberdriver relay server, development)
+# Deployed to: cyberdriver-server-hbbr-iad-dev
+# Public DNS: hbbr-dev.cyberdesk.io (A record managed in Cloudflare)
+
+app             = "cyberdriver-server-hbbr-iad-dev"
+primary_region  = "iad"
+
+[build]
+  dockerfile = "Dockerfile.fly"
+
+[env]
+  CYBERDRIVER_ROLE = "hbbr"
+  RUST_LOG         = "info"
+
+[[vm]]
+  size        = "shared-cpu-1x"
+  memory      = "512mb"
+
+[[services]]
+  internal_port = 21117
+  protocol      = "tcp"
+  [[services.ports]]
+    port = 21117
+  [[services.tcp_checks]]
+    interval      = "10s"
+    timeout       = "2s"
+    grace_period  = "10s"
+
+[[services]]
+  internal_port = 21119
+  protocol      = "tcp"
+  [[services.ports]]
+    port = 21119
+
+[deploy]
+  # See fly.hbbr-prod.toml for the full reasoning. TLDR: hbbr is
+  # single-instance (in-memory pairing state) so we use rolling, not
+  # bluegreen. Don't scale-count above 1.
+  strategy           = "rolling"
+  wait_timeout       = "5m"

@@ -1,0 +1,138 @@
+name: Build and deploy to Fly
+
+# Branch-based deploy:
+#   - push to master → builds image + deploys to PROD Fly apps
+#       (cyberdriver-server-{hbbs,hbbr}-iad-prod)
+#   - push to dev    → builds image + deploys to DEV Fly apps
+#       (cyberdriver-server-{hbbs,hbbr}-iad-dev)
+#
+# Same Docker image is deployed to both hbbs and hbbr in each env;
+# the role split happens via CYBERDRIVER_ROLE env in the fly.toml files.
+#
+# Required GitHub secrets:
+#   FLY_API_TOKEN   — `flyctl auth token` (org-scoped or app-scoped)
+
+on:
+  push:
+    branches: [master, dev]
+  workflow_dispatch:
+    inputs:
+      env:
+        description: "Target environment"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - prod
+
+permissions:
+  contents: read
+  packages: write   # push image to ghcr.io
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      IMAGE_REPO: ghcr.io/cyberdesk-hq/cyberdriver-server
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Determine target environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "env=${{ github.event.inputs.env }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref }}" = "refs/heads/master" ]; then
+            echo "env=prod" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref }}" = "refs/heads/dev" ]; then
+            echo "env=dev" >> "$GITHUB_OUTPUT"
+          else
+            echo "env=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute image tag
+        id: tag
+        run: |
+          SHA="${GITHUB_SHA::12}"
+          ENV="${{ steps.env.outputs.env }}"
+          echo "tag=${ENV}-${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.fly
+          push: true
+          tags: |
+            ${{ env.IMAGE_REPO }}:${{ steps.tag.outputs.tag }}
+            ${{ env.IMAGE_REPO }}:${{ steps.env.outputs.env }}-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Setup flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy hbbs (${{ steps.env.outputs.env }})
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          # No --strategy flag: respects [deploy] strategy in fly.toml.
+          # hbbs uses 'rolling' (volume forces brief detach/reattach
+          # window, ~10-15s; can't do bluegreen with single-attach
+          # volumes). New machine waits for TCP health check on 21115
+          # before old is fully drained.
+          flyctl deploy \
+            --config "fly.hbbs-${{ steps.env.outputs.env }}.toml" \
+            --image "${{ env.IMAGE_REPO }}:${{ steps.tag.outputs.tag }}" \
+            --remote-only
+
+      - name: Deploy hbbr (${{ steps.env.outputs.env }})
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          # hbbr uses 'rolling' strategy. We deliberately keep hbbr at
+          # EXACTLY 1 machine (not bluegreen, not auto-scaled) because
+          # rustdesk-server's hbbr holds relay-pairing state in memory
+          # per-instance — multiple machines will split-brain a
+          # relay request between peers. See fly.hbbr-{prod,dev}.toml
+          # comments for the full reasoning.
+          flyctl deploy \
+            --config "fly.hbbr-${{ steps.env.outputs.env }}.toml" \
+            --image "${{ env.IMAGE_REPO }}:${{ steps.tag.outputs.tag }}" \
+            --remote-only
+
+      - name: Enforce single-instance hbbr (${{ steps.env.outputs.env }})
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          # Idempotent guard — if Fly's deploy ever creates a second
+          # machine (it has been observed to default to 2 for HA on
+          # first deploy), scale back to 1 immediately. No-op when
+          # already at 1.
+          flyctl scale count 1 \
+            --app "cyberdriver-server-hbbr-iad-${{ steps.env.outputs.env }}" \
+            --yes
+
+      - name: Summary
+        run: |
+          echo "## Deploy summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Environment: \`${{ steps.env.outputs.env }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image: \`${{ env.IMAGE_REPO }}:${{ steps.tag.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Apps deployed: \`cyberdriver-server-hbbs-iad-${{ steps.env.outputs.env }}\`, \`cyberdriver-server-hbbr-iad-${{ steps.env.outputs.env }}\`" >> "$GITHUB_STEP_SUMMARY"

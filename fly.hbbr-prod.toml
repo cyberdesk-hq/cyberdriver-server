@@ -1,0 +1,57 @@
+# Fly config — prod hbbr (Cyberdriver relay server, production)
+# Deployed to: cyberdriver-server-hbbr-iad-prod
+# Public DNS: hbbr.cyberdesk.io (A record managed in Cloudflare)
+#
+# Stateless TCP relay; no volume needed.
+
+app             = "cyberdriver-server-hbbr-iad-prod"
+primary_region  = "iad"
+
+[build]
+  dockerfile = "Dockerfile.fly"
+
+[env]
+  CYBERDRIVER_ROLE = "hbbr"
+  RUST_LOG         = "info"
+
+[[vm]]
+  size        = "shared-cpu-1x"
+  memory      = "512mb"
+
+# Relay TCP port (where peers stream their video/audio when NAT punch fails).
+# Carries the TCP health check (zero-downtime gate for bluegreen).
+[[services]]
+  internal_port = 21117
+  protocol      = "tcp"
+  [[services.ports]]
+    port = 21117
+  [[services.tcp_checks]]
+    interval      = "10s"
+    timeout       = "2s"
+    grace_period  = "10s"
+
+# WebSocket relay (web-client fallback path).
+[[services]]
+  internal_port = 21119
+  protocol      = "tcp"
+  [[services.ports]]
+    port = 21119
+
+[deploy]
+  # IMPORTANT: hbbr must run as exactly ONE machine per app. The
+  # upstream rustdesk-server holds relay-pairing state per-instance in
+  # memory — there's no shared state across instances. With 2+
+  # machines, Fly's edge load-balancer can route the two halves of a
+  # relay request (one from each peer) to different hbbr machines,
+  # which then can't pair them. The visible symptom is "first connect
+  # stalls forever, retry connects instantly" (the retry happens to
+  # land both peers on the same instance by luck). Don't scale-count
+  # above 1.
+  #
+  # Strategy: rolling. With only 1 machine, bluegreen offers no
+  # zero-downtime advantage (you still get a brief swap window) AND
+  # introduces a split-brain risk during the brief overlap where new
+  # connections might land on different machines. Rolling is honest
+  # about the brief outage and avoids that risk.
+  strategy           = "rolling"
+  wait_timeout       = "5m"

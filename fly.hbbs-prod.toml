@@ -1,0 +1,85 @@
+# Fly config — prod hbbs (Cyberdriver rendezvous server, production)
+# Deployed to: cyberdriver-server-hbbs-iad-prod
+# Public DNS: hbbs.cyberdesk.io (A record managed in Cloudflare)
+#
+# Image is pushed by .github/workflows/release.yml; flyctl deploy
+# overrides via --image to pin a specific commit SHA.
+
+app             = "cyberdriver-server-hbbs-iad-prod"
+primary_region  = "iad"
+
+[build]
+  dockerfile = "Dockerfile.fly"
+
+[env]
+  CYBERDRIVER_ROLE = "hbbs"
+  HBBR_ADDR        = "hbbr.cyberdesk.io:21117"
+  RUST_LOG         = "info"
+  # Disable the upstream `test_hbbs` self-check. It sends UDP datagrams
+  # to localhost:21116 expecting hbbs's own UDP listener to respond,
+  # but on Fly we bind UDP only to fly-global-services (per Fly's UDP
+  # routing requirement), not localhost. Without this, the test times
+  # out after 12s and hbbs exits 1, crash-looping the machine.
+  # See src/rendezvous_server.rs::test_hbbs (line 1303) and the gate
+  # at line 169.
+  TEST_HBBS        = "no"
+
+# Persistent volume for hbbs's id_ed25519 keypair + db_v2.sqlite3.
+# If the volume is empty (catastrophic loss / fresh region), the
+# entrypoint restores id_ed25519 from the HBBS_KEY_PRIV Fly secret.
+[mounts]
+  source      = "hbbs_data_prod"
+  destination = "/root"
+  initial_size = "1gb"
+
+# Single primary machine; Fly's standby pattern handles HA.
+[[vm]]
+  size        = "shared-cpu-1x"
+  memory      = "512mb"
+
+# UDP rendezvous + NAT punch (the load-bearing port).
+# Internal and external must match per Fly's per-port UDP routing rules.
+# The fly-global-services bind in src/rendezvous_server.rs::create_udp_listener
+# is what makes this actually work.
+[[services]]
+  internal_port = 21116
+  protocol      = "udp"
+  [[services.ports]]
+    port = 21116
+
+# TCP rendezvous (signaling fallback when UDP is blocked).
+# This service carries the TCP health check so Fly knows when the new
+# machine is actually serving traffic before draining the old one.
+[[services]]
+  internal_port = 21115
+  protocol      = "tcp"
+  [[services.ports]]
+    port = 21115
+  [[services.tcp_checks]]
+    interval      = "10s"
+    timeout       = "2s"
+    grace_period  = "10s"
+
+[[services]]
+  internal_port = 21116
+  protocol      = "tcp"
+  [[services.ports]]
+    port = 21116
+
+# WebSocket port for the RustDesk web client (proxied by Fly TLS later
+# if/when we expose a web client; for now, raw TCP is fine).
+[[services]]
+  internal_port = 21118
+  protocol      = "tcp"
+  [[services.ports]]
+    port = 21118
+
+[deploy]
+  # Single machine + single-attach volume = can't bluegreen (two
+  # machines can't simultaneously hold the volume). Rolling waits for
+  # the new machine's health check before the deploy is "done", so
+  # we get the shortest possible reconnect window for clients (~10-15s
+  # vs ~30s with strategy=immediate). True zero-downtime would require
+  # a 2-machine HA setup; deferred to v1.5.
+  strategy           = "rolling"
+  wait_timeout       = "5m"

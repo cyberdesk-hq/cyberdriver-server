@@ -1,0 +1,43 @@
+# Cyberdriver-server Dockerfile for Fly.io.
+#
+# Single image used for both hbbs and hbbr deployments. The Fly app's
+# CYBERDRIVER_ROLE env var ("hbbs" or "hbbr") tells the entrypoint
+# which binary to run.
+#
+# Build is straight COPY-then-cargo-build. We rely on BuildKit cache
+# mounts for the cargo registry and target dir, plus the
+# `cache-from: type=gha` in the GitHub Action, so warm CI builds are
+# fast without us doing fragile dep-pre-warming layer tricks.
+
+# ---- Stage 1: build hbbs + hbbr ----
+FROM rust:1.93-bookworm AS builder
+
+WORKDIR /build
+COPY . .
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/build/target \
+    cargo build --release --bin hbbs --bin hbbr \
+ && cp target/release/hbbs /tmp/hbbs \
+ && cp target/release/hbbr /tmp/hbbr
+
+# ---- Stage 2: runtime ----
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /tmp/hbbs /usr/local/bin/hbbs
+COPY --from=builder /tmp/hbbr /usr/local/bin/hbbr
+COPY fly-entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+WORKDIR /root
+
+# Standard rustdesk-server ports. Fly only honors the ports declared in
+# fly.toml; this EXPOSE is documentation/dev-convenience.
+EXPOSE 21115/tcp 21116/tcp 21116/udp 21117/tcp 21118/tcp 21119/tcp
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

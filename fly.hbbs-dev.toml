@@ -1,0 +1,62 @@
+# Fly config — dev hbbs (Cyberdriver rendezvous server, development)
+# Deployed to: cyberdriver-server-hbbs-iad-dev
+# Public DNS: hbbs-dev.cyberdesk.io (A record managed in Cloudflare)
+#
+# Mirrors fly.hbbs-prod.toml but with dev names + dev relay target +
+# its own volume + its own keypair (dev clients shouldn't trust prod
+# keys or vice versa).
+
+app             = "cyberdriver-server-hbbs-iad-dev"
+primary_region  = "iad"
+
+[build]
+  dockerfile = "Dockerfile.fly"
+
+[env]
+  CYBERDRIVER_ROLE = "hbbs"
+  HBBR_ADDR        = "hbbr-dev.cyberdesk.io:21117"
+  RUST_LOG         = "info"
+  # See fly.hbbs-prod.toml for why this is necessary on Fly.
+  TEST_HBBS        = "no"
+
+[mounts]
+  source      = "hbbs_data_dev"
+  destination = "/root"
+  initial_size = "1gb"
+
+[[vm]]
+  size        = "shared-cpu-1x"
+  memory      = "512mb"
+
+[[services]]
+  internal_port = 21116
+  protocol      = "udp"
+  [[services.ports]]
+    port = 21116
+
+[[services]]
+  internal_port = 21115
+  protocol      = "tcp"
+  [[services.ports]]
+    port = 21115
+  [[services.tcp_checks]]
+    interval      = "10s"
+    timeout       = "2s"
+    grace_period  = "10s"
+
+[[services]]
+  internal_port = 21116
+  protocol      = "tcp"
+  [[services.ports]]
+    port = 21116
+
+[[services]]
+  internal_port = 21118
+  protocol      = "tcp"
+  [[services.ports]]
+    port = 21118
+
+[deploy]
+  # See fly.hbbs-prod.toml for why rolling instead of bluegreen.
+  strategy           = "rolling"
+  wait_timeout       = "5m"
