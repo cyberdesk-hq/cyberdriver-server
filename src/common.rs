@@ -73,7 +73,8 @@ pub(crate) fn is_allowed_websocket_origin(origin: Option<&str>) -> bool {
             if let Some(suffix) = allowed.strip_prefix("https://*.") {
                 let origin = origin.to_ascii_lowercase();
                 let suffix = suffix.to_ascii_lowercase();
-                return origin == format!("https://{suffix}") || origin.ends_with(&format!(".{suffix}"));
+                return origin == format!("https://{suffix}")
+                    || (origin.starts_with("https://") && origin.ends_with(&format!(".{suffix}")));
             }
             false
         })
