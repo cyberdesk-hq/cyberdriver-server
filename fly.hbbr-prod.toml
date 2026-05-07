@@ -36,6 +36,7 @@ primary_region  = "iad"
   protocol      = "tcp"
   [[services.ports]]
     port = 21119
+    handlers = ["tls"]
 
 [deploy]
   # IMPORTANT: hbbr must run as exactly ONE machine per app. The

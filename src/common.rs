@@ -47,6 +47,39 @@ pub(crate) fn get_servers(s: &str, tag: &str) -> Vec<String> {
 }
 
 #[allow(dead_code)]
+pub(crate) fn is_allowed_websocket_origin(origin: Option<&str>) -> bool {
+    let configured = std::env::var("CYBERDRIVER_WEB_ALLOWED_ORIGINS")
+        .or_else(|_| std::env::var("CYBERDRIVER-WEB-ALLOWED-ORIGINS"))
+        .unwrap_or_default();
+    let configured = configured.trim();
+    if configured.is_empty() {
+        return true;
+    }
+    let Some(origin) = origin.map(str::trim).filter(|value| !value.is_empty()) else {
+        return false;
+    };
+    configured
+        .split(',')
+        .map(str::trim)
+        .any(|allowed| {
+            if allowed == "*" || allowed.eq_ignore_ascii_case(origin) {
+                return true;
+            }
+            if let Some(suffix) = allowed.strip_prefix("*.") {
+                let origin = origin.to_ascii_lowercase();
+                let suffix = suffix.to_ascii_lowercase();
+                return origin == suffix || origin.ends_with(&format!(".{suffix}"));
+            }
+            if let Some(suffix) = allowed.strip_prefix("https://*.") {
+                let origin = origin.to_ascii_lowercase();
+                let suffix = suffix.to_ascii_lowercase();
+                return origin == format!("https://{suffix}") || origin.ends_with(&format!(".{suffix}"));
+            }
+            false
+        })
+}
+
+#[allow(dead_code)]
 #[inline]
 fn arg_name(name: &str) -> String {
     name.to_uppercase().replace('_', "-")
