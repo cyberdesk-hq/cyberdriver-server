@@ -66,13 +66,13 @@ primary_region  = "iad"
   [[services.ports]]
     port = 21116
 
-# WebSocket port for the RustDesk web client (proxied by Fly TLS later
-# if/when we expose a web client; for now, raw TCP is fine).
+# WebSocket port for the RustDesk web client.
 [[services]]
   internal_port = 21118
   protocol      = "tcp"
   [[services.ports]]
     port = 21118
+    handlers = ["tls"]
 
 [deploy]
   # Single machine + single-attach volume = can't bluegreen (two

@@ -31,6 +31,7 @@ primary_region  = "iad"
   protocol      = "tcp"
   [[services.ports]]
     port = 21119
+    handlers = ["tls"]
 
 [deploy]
   # See fly.hbbr-prod.toml for the full reasoning. TLDR: hbbr is

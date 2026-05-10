@@ -55,6 +55,7 @@ primary_region  = "iad"
   protocol      = "tcp"
   [[services.ports]]
     port = 21118
+    handlers = ["tls"]
 
 [deploy]
   # See fly.hbbs-prod.toml for why rolling instead of bluegreen.

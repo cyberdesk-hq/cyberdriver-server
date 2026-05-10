@@ -401,6 +401,14 @@ async fn make_pair(
         use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
         let callback = |req: &Request, response: Response| {
             let headers = req.headers();
+            let origin = headers.get("Origin").and_then(|value| value.to_str().ok());
+            if !crate::common::is_allowed_websocket_origin(origin) {
+                log::warn!("Rejected hbbr websocket from disallowed origin {:?}", origin);
+                return Err(http::Response::builder()
+                    .status(http::StatusCode::FORBIDDEN)
+                    .body(Some("Forbidden websocket origin".to_string()))
+                    .unwrap_or_else(|_| http::Response::new(None)));
+            }
             let real_ip = headers
                 .get("X-Real-IP")
                 .or_else(|| headers.get("X-Forwarded-For"))
